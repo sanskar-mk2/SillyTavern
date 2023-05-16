@@ -1,3 +1,11 @@
+// Input url and secret
+// Persist secret in secrets and url in settings
+// Load url on page load
+// Hook connect button to hit getstatus api
+// make generate response api
+
+
+
 import {
     SECRET_KEYS,
     secret_state,
@@ -5,6 +13,12 @@ import {
 } from "./secrets.js";
 
 let scale_settings;
+
+export {
+    is_get_status_scale,
+    scale_settings,
+    loadScaleSettings,
+}
 
 function loadScaleSettings(data, settings) {
 }
@@ -64,3 +78,4 @@ async function getStatusScale() {
 $("document").ready(function () {
     $("#api_button_scale").on("click", onConnectButtonClick);
 });
+

@@ -518,9 +518,12 @@ app.post("/generate_scale", jsonParser, async function (request, response_genera
 
 app.post("/getstatus_scale", jsonParser, async function (request, response_getstatus_scale = response) {
     // https://github.com/nai-degen/TavernAIScale/blob/31bd71f8051c3c0066540404143ac836c8b22323/server.js#L1018-L1074
+
+    const api_key_scale = readSecret(SECRET_KEYS.SCALE);
+
     console.log("getstatus_scale", request.body);
     if(!request.body) return response_getstatus_scale.sendStatus(400);
-    api_key_scale = request.body.key;
+    api_key_scale = api_key_scale;
     api_url_scale = request.body.url;
     var args = {
         headers: { "Authorization": "Basic "+ api_key_scale }
