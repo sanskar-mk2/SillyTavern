@@ -1079,7 +1079,8 @@ select option:not(:checked) {
 }
 
 #api_url_text,
-#textgenerationwebui_api_url_text {
+#textgenerationwebui_api_url_text,
+#scale_api_url_text {
     display: block;
 }
 

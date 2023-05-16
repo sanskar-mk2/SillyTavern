@@ -508,6 +508,45 @@ app.post("/generate_textgenerationwebui", jsonParser, async function (request, r
     }
 });
 
+app.post("/generate_scale", jsonParser, async function (request, response_generate = response) {
+    if (!request.body) return response_generate.sendStatus(400);
+
+    client.post()
+});
+
+app.post("/getstatus_scale", jsonParser, async function (request, response_getstatus_scale = response) {
+    console.log("getstatus_scale", request.body);
+    if(!request.body) return response_getstatus_scale.sendStatus(400);
+    api_key_scale = request.body.key;
+    api_url_scale = request.body.url;
+    var args = {
+        headers: { "Authorization": "Basic "+ api_key_scale }
+    };
+    client.post(api_url_scale,args, function (data, response) {
+        console.log("authing with", api_url_scale);
+
+        if (data?.[0]?.code == "invalid_type") {
+            console.log("received expected response, assuming authed");
+        } else {
+            console.log("getstatus_scale response code:", response.statusCode);
+            console.log("getstatus_scale response data:", data.toString());
+            console.error("\nERROR: unexpected response. your API key or URL may be invalid.");
+        }
+
+        if (response.statusCode == 400 || response.statusCode == 200) {
+            response_getstatus_scale.send({ ok: true });
+        }
+        else {
+            response_getstatus_scale.send({ error: true });
+        }
+    }).on('error', function (err) {
+        console.log('');
+        console.log('something went wrong on the request', err.request.options);
+        response_getstatus_scale.send({error: true});
+    });
+});
+
+
 
 app.post("/savechat", jsonParser, function (request, response) {
     var dir_name = String(request.body.avatar_url).replace('.png', '');

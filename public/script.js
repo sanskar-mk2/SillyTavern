@@ -505,6 +505,7 @@ var online_status = "no_connection";
 
 var api_server = "";
 var api_server_textgenerationwebui = "";
+var api_server_scale = "";
 //var interval_timer = setInterval(getStatus, 2000);
 var interval_timer_novel = setInterval(getStatusNovel, 90000);
 var is_get_status = false;
@@ -3527,6 +3528,15 @@ function changeMainAPI() {
             maxContextElem: $("#max_context_block"),
             amountGenElem: $("#amount_gen_block"),
             softPromptElem: $("#softprompt_block"),
+        },
+        "scale": {
+            apiSettings: $("#scale_settings"),
+            apiConnector: $("#scale_api"),
+            apiPresets: $("#scale_api-presets"),
+            apiRanges: $("#range_block_scale"),
+            maxContextElem: $("#max_context_block"),
+            amountGenElem: $("#amount_gen_block"),
+            softPromptElem: $("#softprompt_block"),
         }
     };
     //console.log('--- apiElements--- ');
@@ -3800,6 +3810,9 @@ async function getSettings(type) {
                 $("#textgenerationwebui_api_url_text").val(
                     api_server_textgenerationwebui
                 );
+
+                api_server_scale = settings.api_server_scale;
+                $("#scale_api_url_text").val(api_server_scale);
 
                 selected_button = settings.selected_button;
             }
@@ -5532,6 +5545,26 @@ $(document).ready(function () {
             is_api_button_press = true;
             getStatus();
         }
+    });
+
+    $("#api_button_scale").click(function (e) {
+        e.stopPropagation();
+        if ($("#scale_api_url_text").val() === "") {
+            callPopup('Please enter a valid URL.', 'text');
+            return;
+        }
+
+        let value = $("#scale_api_url_text").val().trim();
+        $("#scale_api_url_text").val(value);
+        $("#api_loading_scale").css("display", "inline-block");
+        $("#api_button_scale").css("display", "none");
+        api_server_scale = value;
+        main_api = "scale";
+        saveSettingsDebounced();
+        is_get_status = true;
+        is_api_button_press = true;
+        // TODO: implement getStatus() for this
+        getStatus();
     });
 
     $("body").click(function () {
