@@ -5547,25 +5547,6 @@ $(document).ready(function () {
         }
     });
 
-    $("#api_button_scale").click(function (e) {
-        e.stopPropagation();
-        if ($("#scale_api_url_text").val() === "") {
-            callPopup('Please enter a valid URL.', 'text');
-            return;
-        }
-
-        let value = $("#scale_api_url_text").val().trim();
-        $("#scale_api_url_text").val(value);
-        $("#api_loading_scale").css("display", "inline-block");
-        $("#api_button_scale").css("display", "none");
-        api_server_scale = value;
-        main_api = "scale";
-        saveSettingsDebounced();
-        is_get_status = true;
-        is_api_button_press = true;
-        // TODO: implement getStatus() for this
-        getStatus();
-    });
 
     $("body").click(function () {
         if ($("#options").css("opacity") == 1.0) {
