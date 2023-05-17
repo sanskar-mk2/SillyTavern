@@ -106,8 +106,18 @@ function waitForElement(querySelector, timeout) {
 waitForElement("#expression-image", 10000).then(function () {
 
     dragElement(document.getElementById("expression-holder"));
+    dragElement(document.getElementById("floatingPrompt"));
+
 }).catch(() => {
     console.log("expression holder not loaded yet");
+});
+
+waitForElement("#floatingPrompt", 10000).then(function () {
+
+    dragElement(document.getElementById("floatingPrompt"));
+
+}).catch(() => {
+    console.log("floating prompt box not loaded yet");
 });
 
 // Device detection
@@ -360,7 +370,8 @@ function RA_checkOnlineStatus() {
 //Auto-connect to API (when set to kobold, API URL exists, and auto_connect is true)
 
 function RA_autoconnect(PrevApi) {
-    if (online_status === undefined) {
+    // secrets.js or script.js not loaded
+    if (SECRET_KEYS === undefined || online_status === undefined) {
         setTimeout(RA_autoconnect, 100);
         return;
     }
@@ -394,7 +405,6 @@ function RA_autoconnect(PrevApi) {
         }
 
         if (!connection_made) {
-
             RA_AC_retries++;
             retry_delay = Math.min(retry_delay * 2, 30000); // double retry delay up to to 30 secs
             //console.log('connection attempts: ' + RA_AC_retries + ' delay: ' + (retry_delay / 1000) + 's');
@@ -443,6 +453,7 @@ dragElement(document.getElementById("WorldInfo"));
 
 
 function dragElement(elmnt) {
+
     var pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
     if (document.getElementById(elmnt.id + "header")) { //ex: id="sheldheader"
         // if present, the header is where you move the DIV from, but this overrides everything else:
@@ -453,6 +464,7 @@ function dragElement(elmnt) {
     }
 
     function dragMouseDown(e) {
+        //console.log(e);
         e = e || window.event;
         e.preventDefault();
         // get the mouse cursor position at startup:

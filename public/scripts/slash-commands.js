@@ -1,7 +1,13 @@
 import {
+    addOneMessage,
+    chat,
+    chat_metadata,
+    saveChatConditional,
     sendSystemMessage,
+    system_avatar,
     system_message_types
 } from "../script.js";
+import { humanizedDateTime } from "./RossAscends-mods.js";
 export {
     executeSlashCommands,
     registerSlashCommand,
@@ -75,6 +81,42 @@ const getSlashCommandsHelp = parser.getHelpString.bind(parser);
 
 parser.addCommand('help', helpCommandCallback, ['?'], ' – displays this help message', true, true);
 parser.addCommand('bg', setBackgroundCallback, ['background'], '<span class="monospace">(filename)</span> – sets a background according to filename, partial names allowed, will set the first one alphebetically if multiple files begin with the provided argument string', false, true);
+parser.addCommand('sys', sendNarratorMessage, [], ' – sends message as a system narrator', false, true);
+parser.addCommand('sysname', setNarratorName, [], '<span class="monospace">(name)</span> – sets a name for future system narrator messages in this chat (display only). Default: System. Leave empty to reset.', true, true);
+
+const NARRATOR_NAME_KEY = 'narrator_name';
+const NARRATOR_NAME_DEFAULT = 'System';
+
+function setNarratorName(_, text) {
+    const name = text || NARRATOR_NAME_DEFAULT;
+    chat_metadata[NARRATOR_NAME_KEY] = name;
+    toastr.info(`System narrator name set to ${name}`);
+    saveChatConditional();
+}
+
+function sendNarratorMessage(_, text) {
+    if (!text) {
+        return;
+    }
+
+    const name = chat_metadata[NARRATOR_NAME_KEY] || NARRATOR_NAME_DEFAULT;
+    const message = {
+        name: name,
+        is_user: false,
+        is_name: false,
+        is_system: false,
+        send_date: humanizedDateTime(),
+        mes: text.trim(),
+        force_avatar: system_avatar,
+        extra: {
+            type: system_message_types.NARRATOR,
+        },
+    };
+
+    chat.push(message);
+    addOneMessage(message);
+    saveChatConditional();
+}
 
 function helpCommandCallback() {
     sendSystemMessage(system_message_types.HELP);
@@ -97,7 +139,9 @@ function executeSlashCommands(text) {
         return false;
     }
 
-    const lines = text.split('\n');
+    // Hack to allow multi-line slash commands
+    // All slash command messages should begin with a slash
+    const lines = [text];
     const linesToRemove = [];
 
     let interrupt = false;

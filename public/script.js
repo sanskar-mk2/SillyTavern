@@ -107,7 +107,7 @@ import {
 } from "./scripts/poe.js";
 
 import { debounce, delay, restoreCaretPosition, saveCaretPosition, end_trim_to_sentence } from "./scripts/utils.js";
-import { extension_settings, getContext, loadExtensionSettings } from "./scripts/extensions.js";
+import { extension_settings, loadExtensionSettings } from "./scripts/extensions.js";
 import { executeSlashCommands, getSlashCommandsHelp, registerSlashCommand } from "./scripts/slash-commands.js";
 import {
     tag_map,
@@ -126,6 +126,7 @@ import {
     writeSecret
 } from "./scripts/secrets.js";
 import uniqolor from "./scripts/uniqolor.js";
+import { EventEmitter } from './scripts/eventemitter.js';
 
 //exporting functions and vars for mods
 export {
@@ -235,7 +236,7 @@ let characters = [];
 let this_chid;
 let backgrounds = [];
 const default_avatar = "img/ai4.png";
-const system_avatar = "img/five.png";
+export const system_avatar = "img/five.png";
 export let CLIENT_VERSION = 'SillyTavern:UNKNOWN:Cohee#1207'; // For Horde header
 let is_colab = false;
 let is_checked_colab = false;
@@ -260,7 +261,7 @@ let fav_ch_checked = false;
 //initialize global var for future cropped blobs
 let currentCroppedAvatar = '';
 
-const durationSaveEdit = 200;
+const durationSaveEdit = 500;
 const saveSettingsDebounced = debounce(() => saveSettings(), durationSaveEdit);
 const saveCharacterDebounced = debounce(() => $("#create_button").trigger('click'), durationSaveEdit);
 const getStatusDebounced = debounce(() => getStatus(), 90000);
@@ -274,6 +275,7 @@ const system_message_types = {
     GENERIC: "generic",
     BOOKMARK_CREATED: "bookmark_created",
     BOOKMARK_BACK: "bookmark_back",
+    NARRATOR: "narrator",
 };
 
 const extension_prompt_types = {
@@ -383,6 +385,12 @@ const system_messages = {
     },
 };
 
+export const event_types = {
+    EXTRAS_CONNECTED: 'extras_connected',
+}
+
+export const eventSource = new EventEmitter();
+
 // refresh token
 $(document).ajaxError(function myErrorHandler(_, xhr) {
     if (xhr.status == 403) {
@@ -439,7 +447,7 @@ function getTokenCount(str, padding = undefined) {
             let tokenCount = 0;
             jQuery.ajax({
                 async: false,
-                type: 'POST', // 
+                type: 'POST', //
                 url: `/tokenize_llama`,
                 data: JSON.stringify({ text: str }),
                 dataType: "json",
@@ -582,7 +590,7 @@ $.get("/csrf-token").then(async (data) => {
 });
 
 function checkOnlineStatus() {
-    ///////// REMOVED LINES THAT DUPLICATE RA_CHeckOnlineStatus FEATURES 
+    ///////// REMOVED LINES THAT DUPLICATE RA_CHeckOnlineStatus FEATURES
 
     if (online_status == "no_connection") {
         $("#online_status_indicator2").css("background-color", "red");  //Kobold
@@ -942,7 +950,7 @@ function printMessages() {
 function clearChat() {
     count_view_mes = 0;
     extension_prompts = {};
-    $("#chat").html("");
+    $("#chat").children().remove();
 }
 
 function deleteLastMessage() {
@@ -1024,13 +1032,16 @@ function getMessageFromTemplate({ mesId, characterName, isUser, avatarImg, bias,
     return mes;
 }
 
-function appendImageToMessage(mes, messageElement) {
+export function appendImageToMessage(mes, messageElement) {
     if (mes.extra?.image) {
-        const image = document.createElement("img");
-        image.src = mes.extra?.image;
-        image.title = mes.extra?.title || mes.title;
-        image.classList.add("img_extra");
-        messageElement.find(".mes_text").prepend(image);
+        const image = messageElement.find('.mes_img');
+        const text = messageElement.find('.mes_text');
+        const isInline = !!mes.extra?.inline_image;
+        image.attr('src', mes.extra?.image);
+        image.attr('title', mes.extra?.title || mes.title || '');
+        messageElement.find(".mes_img_container").addClass("img_extra");
+        image.toggleClass("img_inline", isInline);
+        text.toggleClass('displayNone', !isInline);
     }
 }
 
@@ -1088,7 +1099,7 @@ function addOneMessage(mes, { type = "normal", insertAfter = null, scroll = true
                 avatarImg = default_avatar;
             }
         }
-        //old processing: 
+        //old processing:
         //if messge is from sytem, use the name provided in the message JSONL to proceed,
         //if not system message, use name2 (char's name) to proceed
         //characterName = mes.is_system || mes.force_avatar ? mes.name : name2;
@@ -1533,7 +1544,7 @@ class StreamingProcessor {
         setGenerationProgress(0);
         $('.mes_buttons:last').show();
         generatedPromtCache = '';
-        
+
         console.log("Generated text size:", text.length, text)
 
         if (power_user.auto_swipe) {
@@ -1778,7 +1789,7 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
 
         if (main_api === 'openai') {
             message_already_generated = ''; // OpenAI doesn't have multigen
-            setOpenAIMessages(coreChat, quiet_prompt);
+            setOpenAIMessages(coreChat);
             setOpenAIMessageExamples(mesExamplesArray);
         }
 
@@ -1817,27 +1828,8 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
                 break;
             }
 
-            let charName = selected_group ? coreChat[j].name : name2;
-            let this_mes_ch_name = '';
-            if (coreChat[j]['is_user']) {
-                this_mes_ch_name = coreChat[j]['name'];
-            } else {
-                this_mes_ch_name = charName;
-            }
-            if (coreChat[j]['is_name'] || selected_group) {
-                chat2[i] = this_mes_ch_name + ': ' + coreChat[j]['mes'] + '\n';
-            } else {
-                chat2[i] = coreChat[j]['mes'] + '\n';
-            }
-
-            if (isInstruct) {
-                chat2[i] = formatInstructModeChat(this_mes_ch_name, coreChat[j]['mes'], coreChat[j]['is_user']);
-            }
-
-            // replace bias markup
-            chat2[i] = (chat2[i] ?? '').replace(/{{(\*?.*\*?)}}/g, '');
+            chat2[i] = formatMessageHistoryItem(coreChat[j], isInstruct);
         }
-        //chat2 = chat2.reverse();
 
         // Determine token limit
         let this_max_context = getMaxContextSize();
@@ -1856,8 +1848,6 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
                 this_max_context = (adjustedParams.maxContextLength - adjustedParams.maxLength);
             }
         }
-
-        console.log();
 
         // Extension added strings
         const allAnchors = getAllExtensionPrompts();
@@ -1957,7 +1947,7 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
                             // where it left off by removing the trailing newline at the end
                             // that was added by chat2 generator. This causes problems with
                             // instruct mode that could not have a trailing newline. So we're
-                            // removing a newline ONLY at the end of the string if it exists. 
+                            // removing a newline ONLY at the end of the string if it exists.
                             item = item.replace(/\n?$/, '');
                             //item = item.substr(0, item.length - 1);
                         }
@@ -2015,7 +2005,7 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
                     // Add quiet generation prompt at depth 0
                     if (isBottom && quiet_prompt && quiet_prompt.length) {
                         const name = is_pygmalion ? 'You' : name1;
-                        const quietAppend = isInstruct ? formatInstructModeChat(name, quiet_prompt, true) : `\n${name}: ${quiet_prompt}`;
+                        const quietAppend = isInstruct ? formatInstructModeChat(name, quiet_prompt, false, true) : `\n${name}: ${quiet_prompt}`;
                         mesSendString += quietAppend;
                     }
 
@@ -2141,7 +2131,7 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
                 generate_data = getNovelGenerationData(finalPromt, this_settings);
             }
             else if (main_api == 'openai') {
-                let [prompt, counts] = await prepareOpenAIMessages(name2, storyString, worldInfoBefore, worldInfoAfter, afterScenarioAnchor, promptBias, type);
+                let [prompt, counts] = await prepareOpenAIMessages(name2, storyString, worldInfoBefore, worldInfoAfter, afterScenarioAnchor, promptBias, type, quiet_prompt);
                 generate_data = { prompt: prompt };
 
                 // counts will return false if the user has not enabled the token breakdown feature
@@ -2186,8 +2176,8 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
             }
             else {
                 jQuery.ajax({
-                    type: 'POST', // 
-                    url: generate_url, // 
+                    type: 'POST', //
+                    url: generate_url, //
                     data: JSON.stringify(generate_data),
                     beforeSend: function () {
 
@@ -2368,6 +2358,24 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
     }
     //console.log('generate ending');
 } //generate ends
+
+function formatMessageHistoryItem(chatItem, isInstruct) {
+    const isNarratorType = chatItem?.extra?.type === system_message_types.NARRATOR;
+    const characterName = selected_group ? chatItem.name : name2;
+    const itemName = chatItem.is_user ? chatItem['name'] : characterName;
+    const shouldPrependName = (chatItem.is_name || selected_group) && !isNarratorType;
+
+    let textResult = shouldPrependName ? `${itemName}: ${chatItem.mes}\n` : `${chatItem.mes}\n`;
+
+    if (isInstruct) {
+        textResult = formatInstructModeChat(itemName, chatItem.mes, chatItem.is_user, isNarratorType);
+    }
+
+    // replace bias markup
+    textResult = (textResult ?? '').replace(/{{(\*?.*\*?)}}/g, '');
+
+    return textResult;
+}
 
 function sendMessageAsUser(textareaText, messageBias) {
     chat[chat.length] = {};
@@ -4485,6 +4493,40 @@ export function cancelTtsPlay() {
     }
 }
 
+async function deleteMessageImage() {
+    const value = await callPopup("<h3>Delete image from message?<br>This action can't be undone.</h3>", 'confirm');
+
+    if (!value) {
+        return;
+    }
+
+    const mesBlock = $(this).closest('.mes');
+    const mesId = mesBlock.attr('mesid');
+    const message = chat[mesId];
+    delete message.extra.image;
+    delete message.extra.inline_image;
+    mesBlock.find('.mes_img_container').removeClass('img_extra');
+    mesBlock.find('.mes_img').attr('src', '');
+    saveChatConditional();
+}
+
+function enlargeMessageImage() {
+    const mesBlock = $(this).closest('.mes');
+    const mesId = mesBlock.attr('mesid');
+    const message = chat[mesId];
+    const imgSrc = message?.extra?.image;
+
+    if (!imgSrc) {
+        return;
+    }
+
+    const img = document.createElement('img');
+    img.classList.add('img_enlarged');
+    img.src = imgSrc;
+    $('#dialogue_popup').addClass('wide_dialogue_popup');
+    callPopup(img.outerHTML, 'text');
+}
+
 window["SillyTavern"].getContext = function () {
     return {
         chat: chat,
@@ -4502,6 +4544,8 @@ window["SillyTavern"].getContext = function () {
         maxContext: Number(max_context),
         chatMetadata: chat_metadata,
         streamingProcessor,
+        eventSource: eventSource,
+        event_types: event_types,
         addOneMessage: addOneMessage,
         generate: Generate,
         getTokenCount: getTokenCount,
@@ -5381,8 +5425,11 @@ $(document).ready(function () {
 
     $("#delete_button").click(function () {
         popup_type = "del_ch";
-        callPopup(
-            "<h3>Delete the character?</h3>Your chat will be closed."
+        callPopup(`
+            <h3>Delete the character?</h3>
+            <b>THIS IS PERMANENT!<br><br>
+            THIS WILL ALSO DELETE ALL<br>
+            OF THE CHARACTER'S CHAT FILES.<br><br></b>`
         );
     });
 
@@ -5583,6 +5630,27 @@ $(document).ready(function () {
 
     $("#options [id]").on("click", function () {
         var id = $(this).attr("id");
+
+        if (id == "option_toggle_AN") {
+            if (selected_group || this_chid !== undefined && $("#floatingPrompt").css("display") === 'none') {
+                $("#floatingPrompt").css("display", "flex");
+                $("#floatingPrompt").css("opacity", 0.0);
+                $("#floatingPrompt").transition({
+                    opacity: 1.0,
+                    duration: animation_duration,
+                    easing: animation_easing,
+                });
+                $("#ANBlockToggle").click();
+            } else {
+                $("#floatingPrompt").transition({
+                    opacity: 0.0,
+                    duration: 250,
+                    easing: animation_easing,
+                });
+                setTimeout(function () { $("#floatingPrompt").hide(); }, 250);
+            }
+        }
+
         if (id == "option_select_chat") {
             if ((selected_group && !is_group_generating) || (this_chid !== undefined && !is_send_press)) {
                 displayPastChats();
@@ -6416,6 +6484,9 @@ $(document).ready(function () {
     $('#chat').on('scroll', () => {
         $('.code-copied').css({ 'display': 'none' });
     });
+
+    $(document).on('click', '.mes_img_enlarge', enlargeMessageImage);
+    $(document).on('click', '.mes_img_delete', deleteMessageImage);
 
     $(window).on('beforeunload', () => {
         cancelTtsPlay();

@@ -20,7 +20,10 @@ const cliArguments = yargs(hideBin(process.argv))
     }).argv;
 
 // change all relative paths
-process.chdir(__dirname)
+const path = require('path');
+const directory = process.pkg ? path.dirname(process.execPath) : __dirname;
+console.log(process.pkg ? 'Running from binary' : 'Running from source');
+process.chdir(directory);
 
 const express = require('express');
 const compression = require('compression');
@@ -42,7 +45,7 @@ const encode = require('png-chunks-encode');
 const PNGtext = require('png-chunk-text');
 
 const jimp = require('jimp');
-const path = require('path');
+//const path = require('path');
 const sanitize = require('sanitize-filename');
 const mime = require('mime-types');
 
@@ -60,10 +63,10 @@ const utf8Encode = new TextEncoder();
 const utf8Decode = new TextDecoder('utf-8', { ignoreBOM: true });
 const commandExistsSync = require('command-exists').sync;
 
-const config = require(path.join(__dirname, './config.conf'));
+const config = require(path.join(process.cwd(), './config.conf'));
 const server_port = process.env.SILLY_TAVERN_PORT || config.port;
 
-const whitelistPath = path.join(__dirname, "./whitelist.txt");
+const whitelistPath = path.join(process.cwd(), "./whitelist.txt");
 let whitelist = config.whitelist;
 
 if (fs.existsSync(whitelistPath)) {
@@ -82,10 +85,11 @@ const allowKeysExposure = config.allowKeysExposure;
 const axios = require('axios');
 const tiktoken = require('@dqbd/tiktoken');
 const WebSocket = require('ws');
-const AIHorde = require("@zeldafan0225/ai_horde");
+const AIHorde = require("./src/horde");
 const ai_horde = new AIHorde({
     client_agent: getVersion()?.agent || 'SillyTavern:UNKNOWN:Cohee#1207',
 });
+const ipMatching = require('ip-matching');
 
 var Client = require('node-rest-client').Client;
 var client = new Client();
@@ -245,7 +249,7 @@ app.use(function (req, res, next) { //Security
     }
 
     //clientIp = req.connection.remoteAddress.split(':').pop();
-    if (whitelistMode === true && !whitelist.includes(clientIp)) {
+    if (whitelistMode === true && !whitelist.some(x => ipMatching.matches(clientIp, ipMatching.getMatch(x)))) {
         console.log('Forbidden: Connection attempt from ' + clientIp + '. If you are attempting to connect, please add your IP address in whitelist or disable whitelist mode in config.conf in root of SillyTavern folder.\n');
         return res.status(403).send('<b>Forbidden</b>: Connection attempt from <b>' + clientIp + '</b>. If you are attempting to connect, please add your IP address in whitelist or disable whitelist mode in config.conf in root of SillyTavern folder.');
     }
@@ -260,7 +264,7 @@ app.use((req, res, next) => {
         console.log(filePath);
         fs.access(filePath, fs.constants.R_OK, (err) => {
             if (!err) {
-                res.sendFile(filePath, { root: __dirname });
+                res.sendFile(filePath, { root: process.cwd() });
             } else {
                 res.send('Character not found: ' + filePath);
                 //next();
@@ -271,10 +275,10 @@ app.use((req, res, next) => {
     }
 });
 
-app.use(express.static(__dirname + "/public", { refresh: true }));
+app.use(express.static(process.cwd() + "/public", { refresh: true }));
 
 app.use('/backgrounds', (req, res) => {
-    const filePath = decodeURIComponent(path.join(__dirname, 'public/backgrounds', req.url.replace(/%20/g, ' ')));
+    const filePath = decodeURIComponent(path.join(process.cwd(), 'public/backgrounds', req.url.replace(/%20/g, ' ')));
     fs.readFile(filePath, (err, data) => {
         if (err) {
             res.status(404).send('File not found');
@@ -286,7 +290,7 @@ app.use('/backgrounds', (req, res) => {
 });
 
 app.use('/characters', (req, res) => {
-    const filePath = decodeURIComponent(path.join(__dirname, charactersPath, req.url.replace(/%20/g, ' ')));
+    const filePath = decodeURIComponent(path.join(process.cwd(), charactersPath, req.url.replace(/%20/g, ' ')));
     fs.readFile(filePath, (err, data) => {
         if (err) {
             res.status(404).send('File not found');
@@ -297,16 +301,16 @@ app.use('/characters', (req, res) => {
 });
 app.use(multer({ dest: "uploads" }).single("avatar"));
 app.get("/", function (request, response) {
-    response.sendFile(__dirname + "/public/index.html");
+    response.sendFile(process.cwd() + "/public/index.html");
 });
 app.get("/notes/*", function (request, response) {
-    response.sendFile(__dirname + "/public" + request.url + ".html");
+    response.sendFile(process.cwd() + "/public" + request.url + ".html");
 });
 app.get('/get_faq', function (_, response) {
-    response.sendFile(__dirname + "/faq.md");
+    response.sendFile(process.cwd() + "/faq.md");
 });
 app.get('/get_readme', function (_, response) {
-    response.sendFile(__dirname + "/readme.md");
+    response.sendFile(process.cwd() + "/readme.md");
 });
 app.get('/deviceinfo', function (request, response) {
     const userAgent = request.header('user-agent');
@@ -702,13 +706,13 @@ function getVersion() {
     try {
         const pkgJson = require('./package.json');
         pkgVersion = pkgJson.version;
-        if (commandExistsSync('git')) {
+        if (!process.pkg && commandExistsSync('git')) {
             gitRevision = require('child_process')
-                .execSync('git rev-parse --short HEAD', { cwd: __dirname })
+                .execSync('git rev-parse --short HEAD', { cwd: process.cwd() })
                 .toString().trim();
 
             gitBranch = require('child_process')
-                .execSync('git rev-parse --abbrev-ref HEAD', { cwd: __dirname })
+                .execSync('git rev-parse --abbrev-ref HEAD', { cwd: process.cwd() })
                 .toString().trim();
         }
     }
@@ -910,18 +914,11 @@ app.post("/deletecharacter", urlencodedParser, function (request, response) {
 async function charaWrite(img_url, data, target_img, response = undefined, mes = 'ok', crop = undefined) {
     try {
         // Read the image, resize, and save it as a PNG into the buffer
-        let rawImg = await jimp.read(img_url);
-
-        // Apply crop if defined
-        if (typeof crop == 'object' && [crop.x, crop.y, crop.width, crop.height].every(x => typeof x === 'number')) {
-            rawImg = rawImg.crop(crop.x, crop.y, crop.width, crop.height);
-        }
-
-        const image = await rawImg.cover(AVATAR_WIDTH, AVATAR_HEIGHT).getBufferAsync(jimp.MIME_PNG);
+        const image = await tryReadImage(img_url, crop);
 
         // Get the chunks
         const chunks = extract(image);
-        const tEXtChunks = chunks.filter(chunk => chunk.create_date === 'tEXt');
+        const tEXtChunks = chunks.filter(chunk => chunk.create_date === 'tEXt' || chunk.name === 'tEXt');
 
         // Remove all existing tEXt chunks
         for (let tEXtChunk of tEXtChunks) {
@@ -935,12 +932,28 @@ async function charaWrite(img_url, data, target_img, response = undefined, mes =
         fs.writeFileSync(charactersPath + target_img + '.png', new Buffer.from(encode(chunks)));
         if (response !== undefined) response.send(mes);
         return true;
-
-
     } catch (err) {
         console.log(err);
         if (response !== undefined) response.status(500).send(err);
         return false;
+    }
+}
+
+async function tryReadImage(img_url, crop) {
+    try {
+        let rawImg = await jimp.read(img_url);
+    
+        // Apply crop if defined
+        if (typeof crop == 'object' && [crop.x, crop.y, crop.width, crop.height].every(x => typeof x === 'number')) {
+            rawImg = rawImg.crop(crop.x, crop.y, crop.width, crop.height);
+        }
+    
+        const image = await rawImg.cover(AVATAR_WIDTH, AVATAR_HEIGHT).getBufferAsync(jimp.MIME_PNG);
+        return image;
+    }
+    // If it's an unsupported type of image (APNG) - just read the file as buffer
+    catch {
+        return fs.readFileSync(img_url);
     }
 }
 
@@ -1738,7 +1751,7 @@ app.post("/exportcharacter", jsonParser, async function (request, response) {
 
     switch (request.body.format) {
         case 'png':
-            return response.sendFile(filename, { root: __dirname });
+            return response.sendFile(filename, { root: process.cwd() });
         case 'json': {
             try {
                 let json = await charaRead(filename);
@@ -1768,7 +1781,7 @@ app.post("/exportcharacter", jsonParser, async function (request, response) {
                 await webp.cwebp(filename, inputWebpPath, '-q 95');
                 await webp.webpmux_add(inputWebpPath, outputWebpPath, metadataPath, 'exif');
 
-                response.sendFile(outputWebpPath, { root: __dirname }, () => {
+                response.sendFile(outputWebpPath, { root: process.cwd() }, () => {
                     fs.rmSync(inputWebpPath);
                     fs.rmSync(metadataPath);
                     fs.rmSync(outputWebpPath);
@@ -2383,11 +2396,20 @@ async function generateThumbnail(type, file) {
     const mySize = imageSizes[type];
 
     try {
-        const image = await jimp.read(pathToOriginalFile);
-        const buffer = await image.cover(mySize[0], mySize[1]).quality(95).getBufferAsync(mime.lookup('jpg'));
+        let buffer;
+
+        try {
+            const image = await jimp.read(pathToOriginalFile);
+            buffer = await image.cover(mySize[0], mySize[1]).quality(95).getBufferAsync(mime.lookup('jpg'));
+        }
+        catch (inner) {
+            console.warn(`Thumbnailer can not process the image: ${pathToOriginalFile}. Using original size`);
+            buffer = fs.readFileSync(pathToOriginalFile);
+        }
+
         fs.writeFileSync(pathToCachedFile, buffer);
     }
-    catch (err) {
+    catch (outer) {
         return null;
     }
 
@@ -2413,7 +2435,7 @@ app.get('/thumbnail', jsonParser, async function (request, response) {
 
     if (config.disableThumbnails == true) {
         const pathToOriginalFile = path.join(getOriginalFolder(type), file);
-        return response.sendFile(pathToOriginalFile, { root: __dirname });
+        return response.sendFile(pathToOriginalFile, { root: process.cwd() });
     }
 
     const pathToCachedFile = await generateThumbnail(type, file);
@@ -2422,7 +2444,7 @@ app.get('/thumbnail', jsonParser, async function (request, response) {
         return response.sendStatus(404);
     }
 
-    return response.sendFile(pathToCachedFile, { root: __dirname });
+    return response.sendFile(pathToCachedFile, { root: process.cwd() });
 });
 
 /* OpenAI */
@@ -2607,7 +2629,8 @@ app.post("/generate_openai", jsonParser, function (request, response_generate_op
                 response_generate_openai.send({ error: true });
             } else if (response.status == 429) {
                 console.log('Out of quota');
-                response_generate_openai.send({ error: true, quota_error: true, });
+                const quota_error = response?.data?.type === 'insufficient_quota';
+                response_generate_openai.send({ error: true, quota_error, });
             } else if (response.status == 500 || response.status == 409 || response.status == 504) {
                 if (request.body.stream) {
                     response.data.on('data', chunk => {
@@ -2630,7 +2653,7 @@ app.post("/generate_openai", jsonParser, function (request, response_generate_op
                 }
             }
             try {
-                const quota_error = error?.response?.status === 429;
+                const quota_error = error?.response?.status === 429 && error?.response?.data?.error?.type === 'insufficient_quota';
                 if (!response_generate_openai.headersSent) {
                     response_generate_openai.send({ error: true, quota_error });
                 }
@@ -2997,6 +3020,8 @@ app.post('/horde_generateimage', jsonParser, async (request, response) => {
             params:
             {
                 sampler_name: request.body.sampler,
+                hires_fix: request.body.enable_hr,
+                use_gfpgan: request.body.restore_faces,
                 cfg_scale: request.body.scale,
                 steps: request.body.steps,
                 width: request.body.width,
