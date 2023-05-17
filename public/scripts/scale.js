@@ -4,8 +4,7 @@
 // Hook connect button to hit getstatus api
 // make generate response api
 
-
-
+import { saveSettingsDebounced } from "../script.js";
 import {
     SECRET_KEYS,
     secret_state,
@@ -13,6 +12,8 @@ import {
 } from "./secrets.js";
 
 let scale_settings;
+let is_get_status_scale = false;
+let is_api_button_press_scale = false;
 
 export {
     is_get_status_scale,
@@ -23,7 +24,16 @@ export {
 function loadScaleSettings(data, settings) {
 }
 
+function setScaleOnlineStatus(value) {
+    is_get_status_scale = value;
+}
+
+function loadScaleSettings(data, settings) {
+
+}
+
 async function onConnectButtonClick(e) {
+    console.log('onConnectButtonClick');
     e.stopPropagation();
     const api_key_scale = $('#api_key_scale').val().trim();
 
@@ -43,6 +53,14 @@ async function onConnectButtonClick(e) {
     is_api_button_press_scale = true;
     await getStatusScale();
 }
+
+function resultCheckStatusOpen() {
+    is_api_button_press_openai = false;
+    checkOnlineStatus();
+    $("#api_loading_scale").css("display", 'none');
+    $("#api_button_scale").css("display", 'inline-block');
+}
+
 
 async function getStatusScale() {
     if (is_get_status_scale) {
@@ -78,4 +96,3 @@ async function getStatusScale() {
 $("document").ready(function () {
     $("#api_button_scale").on("click", onConnectButtonClick);
 });
-

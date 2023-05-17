@@ -79,6 +79,8 @@ import {
     getTokenCountOpenAI,
 } from "./scripts/openai.js";
 
+import {scale_settings, is_get_status_scale, loadScaleSettings} from "./scripts/scale.js"
+
 import {
     getNovelTier,
     loadNovelPreset,
@@ -680,7 +682,7 @@ async function getStatus() {
             },
         });
     } else {
-        if (is_get_status_novel != true && is_get_status_openai != true && main_api != "poe") {
+        if (is_get_status_novel != true && is_get_status_openai != true && main_api != "poe" && is_get_status_scale != true) {
             online_status = "no_connection";
         }
     }
@@ -4049,7 +4051,7 @@ async function getStatusNovel() {
             },
         });
     } else {
-        if (is_get_status != true && is_get_status_openai != true && is_get_status_poe != true) {
+        if (is_get_status != true && is_get_status_openai != true && is_get_status_poe != true && is_get_status_scale != true) {
             online_status = "no_connection";
         }
     }

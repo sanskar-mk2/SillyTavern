@@ -397,6 +397,11 @@ function RA_autoconnect(PrevApi) {
                     $("#api_button_openai").click();
                 }
                 break;
+            case 'scale':
+                if (secret_state[SECRET_KEYS.SCALE]) {
+                    $("#api_button_scale").click();
+                }
+                break;
             case 'poe':
                 if (secret_state[SECRET_KEYS.POE]) {
                     $("#poe_connect").click();
