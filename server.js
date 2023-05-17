@@ -3026,6 +3026,7 @@ app.post('/horde_generateimage', jsonParser, async (request, response) => {
                 steps: request.body.steps,
                 width: request.body.width,
                 height: request.body.height,
+                karras: Boolean(request.body.karras),
                 n: 1,
             },
             r2: false,
