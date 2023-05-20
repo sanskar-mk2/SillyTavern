@@ -49,6 +49,7 @@ import {
     editGroup,
     deleteGroupChat,
     renameGroupChat,
+    importGroupChat,
 } from "./scripts/group-chats.js";
 
 import {
@@ -108,7 +109,7 @@ import {
     setPoeOnlineStatus,
 } from "./scripts/poe.js";
 
-import { debounce, delay, restoreCaretPosition, saveCaretPosition, end_trim_to_sentence } from "./scripts/utils.js";
+import { debounce, delay, restoreCaretPosition, saveCaretPosition, end_trim_to_sentence, countOccurrences, isOdd } from "./scripts/utils.js";
 import { extension_settings, loadExtensionSettings } from "./scripts/extensions.js";
 import { executeSlashCommands, getSlashCommandsHelp, registerSlashCommand } from "./scripts/slash-commands.js";
 import {
@@ -228,7 +229,6 @@ let safetychat = [
 ];
 let chat_create_date = 0;
 
-let prev_selected_char = null;
 const default_ch_mes = "Hello";
 let count_view_mes = 0;
 let mesStr = "";
@@ -293,12 +293,22 @@ const system_messages = {
         is_system: true,
         is_name: true,
         mes: [
-            'Hi there! The following chat formatting commands are supported:',
-            '<ol>',
-            '<li><tt>{{text}}</tt> – sets a permanent behavioral bias for the AI</li>',
-            '<li><tt>{{}}</tt> – removes any active character bias</li>',
-            '</ol>',
-        ].join('')
+            `Hi there! The following chat formatting commands are supported:
+            <ul>
+            <li><tt>{​{text}​}</tt> - sets a one-time behavioral bias for the AI. Resets when you send the next message.
+            </li>
+            </ul>
+            Hotkeys/Keybinds: 
+            <ul>
+            <li><tt>Up</tt> = Edit last message in chat</li>
+            <li><tt>Ctrl+Up</tt> = Edit last USER message in chat</li>
+            <li><tt>Left</tt> = swipe left</li>
+            <li><tt>Right</tt> = swipe right (NOTE: swipe hotkeys are disabled when chatbar has something typed into it)</li>
+            <li><tt>Ctrl+Left</tt> = view locally stored variables (in the browser console window)</li>
+            <li><tt>Enter</tt> (with chat bar selected) = send your message to AI</li>
+            <li><tt>Ctrl+Enter</tt> = Regenerate the last AI response</li>
+            </ul>`
+        ]
     },
     welcome:
     {
@@ -307,42 +317,42 @@ const system_messages = {
         is_user: false,
         is_name: true,
         mes: [
-            '<h2>Welcome to <span id="version_display_welcome">SillyTavern</span>!</h2>',
-            '<div id="version_display_welcome"></div>',
-            '<h3>Want to Update to the latest version?</h3>',
-            "Read the <a href='/notes/update.html' target='_blank'>instructions here</a>. Also located in your installation's base folder",
-            '<hr class="sysHR">',
-            '<h3>In order to begin chatting:</h3>',
-            '<ol>',
-            '<li>Connect to one of the supported generation APIs (the plug icon)</li>',
-            '<li>Create or pick a character from the list (the top-right namecard icon)</li>',
-            '</ol>',
-            '<hr class="sysHR">',
-            '<h3>Where to download more characters?</h3>',
-            '<i>(Not endorsed, your discretion is advised)</i>',
-            '<ol>',
-            '<li><a target="_blank" href="https://discord.gg/pygmalionai">Pygmalion AI Discord</a></li>',
-            '<li><a target="_blank" href="https://www.characterhub.org/">CharacterHub (NSFW)</a></li>',
-            '</ol>',
-            '<hr class="sysHR">',
-            '<h3>Where can I get help?</h3>',
-            'Before going any further, check out the following resources:',
-            '<ol>',
-            '<li><a target="_blank" href="/notes/readme.md">Introduction to SillyTavern</a></li>',
-            '<li><a target="_blank" href="/notes/faq.md">SillyTavern FAQ</a></li>',
-            '<li><a target="_blank" href="/notes">SillyTavern Guidebook</a></li>',
-            '<li><a target="_blank" href="https://github.com/Cohee1207/TavernAI-extras/blob/main/README.md">Extras API Docs</a></li>',
-            '<li><a target="_blank" href="https://docs.alpindale.dev/">Pygmalion AI Docs</a></li>',
-            '</ol>',
-            'Type <tt>/?</tt> in any chat to get help on message formatting commands.',
-            '<hr class="sysHR">',
-            '<h3>Still have questions or suggestions left?</h3>',
-            '<a target="_blank" href="https://discord.gg/RZdyAEUPvj">SillyTavern Community Discord</a>',
-            '<br/>',
-            '<a target="_blank" href="https://github.com/Cohee1207/SillyTavern/issues">Post a GitHub issue.</a>',
-            '<br/>',
-            '<a target="_blank" href="https://github.com/Cohee1207/SillyTavern#questions-or-suggestions">Contact the developers.</a>',
-        ].join('')
+            `<h2>Welcome to <span id="version_display_welcome">SillyTavern</span>!</h2>
+            <div id="version_display_welcome"></div>
+            <h3>Want to Update to the latest version?</h3>
+            Read the <a href='/notes/update.html' target='_blank'>instructions here</a>. Also located in your installation's base folder
+            <hr class="sysHR">
+            <h3>In order to begin chatting:</h3>
+            <ol>
+            <li>Connect to one of the supported generation APIs (the plug icon)</li>
+            <li>Create or pick a character from the list (the top-right namecard icon)</li>
+            </ol>
+            <hr class="sysHR">
+            <h3>Where to download more characters?</h3>
+            <i>(Not endorsed, your discretion is advised)</i>
+            <ol>
+            <li><a target="_blank" href="https://discord.gg/pygmalionai">Pygmalion AI Discord</a></li>
+            <li><a target="_blank" href="https://www.characterhub.org/">CharacterHub (NSFW)</a></li>
+            </ol>
+            <hr class="sysHR">
+            <h3>Where can I get help?</h3>
+            Before going any further, check out the following resources:
+            <ol>
+            <li><a target="_blank" href="/notes/readme.md">Introduction to SillyTavern</a></li>
+            <li><a target="_blank" href="/notes/faq.md">SillyTavern FAQ</a></li>
+            <li><a target="_blank" href="/notes">SillyTavern Guidebook</a></li>
+            <li><a target="_blank" href="https://github.com/Cohee1207/TavernAI-extras/blob/main/README.md">Extras API Docs</a></li>
+            <li><a target="_blank" href="https://docs.alpindale.dev/">Pygmalion AI Docs</a></li>
+            </ol>
+            Type <tt>/?</tt> in any chat to get help on message formatting commands.
+            <hr class="sysHR">
+            <h3>Still have questions or suggestions left?</h3>
+            <a target="_blank" href="https://discord.gg/RZdyAEUPvj">SillyTavern Community Discord</a>
+            <br>
+            <a target="_blank" href="https://github.com/Cohee1207/SillyTavern/issues">Post a GitHub issue.</a>
+            <br>
+            <a target="_blank" href="https://github.com/Cohee1207/SillyTavern#questions-or-suggestions">Contact the developers.</a>
+        `].join('')
     },
     group: {
         name: systemUserName,
@@ -411,7 +421,7 @@ async function getClientVersion() {
         let displayVersion = `SillyTavern ${data.pkgVersion}`;
 
         if (data.gitRevision && data.gitBranch) {
-            displayVersion += ` '${data.gitBranch}' (${data.gitRevision})`;
+            displayVersion += ` '${data.gitBranch}'(${data.gitRevision})`;
         }
 
         $('#version_display').text(displayVersion);
@@ -450,7 +460,7 @@ function getTokenCount(str, padding = undefined) {
             jQuery.ajax({
                 async: false,
                 type: 'POST', //
-                url: `/tokenize_llama`,
+                url: `/ tokenize_llama`,
                 data: JSON.stringify({ text: str }),
                 dataType: "json",
                 contentType: "application/json",
@@ -826,13 +836,17 @@ async function getBackgrounds() {
         for (const bg of getData) {
             const thumbPath = getThumbnailUrl('bg', bg);
             $("#bg_menu_content").append(
-                `<div class="bg_example" bgfile="${bg}" class="bg_example_img" title="${bg}" style="background-image: url('${thumbPath}');">
-                <div bgfile="${bg}" class="bg_example_cross fa-solid fa-circle-xmark"></div>
-            </div>`
+                `<div class="bg_example flex-container" bgfile="${bg}" class="bg_example_img" title="${bg}" style="background-image: url('${thumbPath}');">
+                    <div bgfile="${bg}" class="bg_example_cross fa-solid fa-circle-xmark"></div>
+                    <div class="BGSampleTitle">
+                        ${bg
+                    .replace('.png', '')
+                    .replace('.jpg', '')
+                    .replace('.webp', '')}
+                </div>
+                </div>`
             );
         }
-        //var aa = JSON.parse(getData[0]);
-        //const load_ch_coint = Object.getOwnPropertyNames(getData);
     }
 }
 async function isColab() {
@@ -1015,6 +1029,11 @@ function messageFormatting(mes, ch_name, isSystem, isUser) {
         });
     }
 
+    // Hides bias from empty messages send with slash commands
+    if (isSystem) {
+        mes = mes.replace(/{{(\*?.*\*?)}}/g, "");
+    }
+
     if (!power_user.allow_name2_display && ch_name && !isUser && !isSystem) {
         mes = mes.replaceAll(`${ch_name}:`, "");
     }
@@ -1148,7 +1167,7 @@ function addOneMessage(mes, { type = "normal", insertAfter = null, scroll = true
     newMessage.data("isSystem", isSystem);
 
     if (isSystem) {
-        newMessage.find(".mes_edit").hide();
+        // newMessage.find(".mes_edit").hide();
         newMessage.find(".mes_prompt").hide(); //don't need prompt button for sys
     }
 
@@ -1308,7 +1327,7 @@ function processCommands(message, type) {
     return result.interrupt;
 }
 
-function sendSystemMessage(type, text) {
+function sendSystemMessage(type, text, extra = {}) {
     const systemMessage = system_messages[type];
 
     if (!systemMessage) {
@@ -1329,6 +1348,7 @@ function sendSystemMessage(type, text) {
         newMessage.extra = {};
     }
 
+    newMessage.extra = Object.assign(newMessage.extra, extra);
     newMessage.extra.type = type;
 
     chat.push(newMessage);
@@ -1336,7 +1356,7 @@ function sendSystemMessage(type, text) {
     is_send_press = false;
 }
 
-function extractMessageBias(message) {
+export function extractMessageBias(message) {
     if (!message) {
         return null;
     }
@@ -1348,14 +1368,6 @@ function extractMessageBias(message) {
 
     while ((curMatch = rxp.exec(message))) {
         found.push(curMatch[1].trim());
-    }
-
-    if (!found.length) {
-        // cancels a bias
-        if (message.includes('{{') && message.includes('}}')) {
-            return '';
-        }
-        return null;
     }
 
     return ` ${found.join(" ")} `;
@@ -1505,6 +1517,12 @@ class StreamingProcessor {
         let result = extractNameFromMessage(processedText, this.force_name2, isImpersonate);
         let isName = result.this_mes_is_name;
         processedText = result.getMessage;
+
+        // Predict unbalanced asterisks during streaming
+        if (!isFinal && isOdd(countOccurrences(processedText, '*'))) {
+            // Add asterisk at the end to balance it
+            processedText = processedText.trimEnd() + '*';
+        }
 
         if (isImpersonate) {
             $('#send_textarea').val(processedText).trigger('input');
@@ -1732,21 +1750,7 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
 
         deactivateSendButtons();
 
-        let promptBias = null;
-        let messageBias = extractMessageBias(textareaText);
-
-        // gets bias of the latest message where it was applied
-        for (let mes of chat.slice().reverse()) {
-            if (mes && mes.is_user && mes.extra && mes.extra.bias) {
-                if (mes.extra.bias.trim().length > 0) {
-                    promptBias = mes.extra.bias;
-                }
-                break;
-            }
-        }
-
-        // bias from the latest message is top priority//
-        promptBias = messageBias ?? promptBias ?? '';
+        let { messageBias, promptBias } = getBiasStrings(textareaText);
 
         //*********************************
         //PRE FORMATING STRING
@@ -1754,7 +1758,13 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
 
         //for normal messages sent from user..
         if (textareaText != "" && !automatic_trigger && type !== 'quiet') {
-            sendMessageAsUser(textareaText, messageBias);
+            // If user message contains no text other than bias - send as a system message
+            if (messageBias && replaceBiasMarkup(textareaText).trim().length === 0) {
+                sendSystemMessage(system_message_types.GENERIC, ' ', { bias: messageBias });
+            }
+            else {
+                sendMessageAsUser(textareaText, messageBias);
+            }
         }
         ////////////////////////////////////
         const scenarioText = chat_metadata['scenario'] || characters[this_chid].scenario;
@@ -1808,7 +1818,7 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
         }
 
         // Pygmalion does that anyway
-        if (power_user.always_force_name2 && !is_pygmalion) {
+        if (promptBias || (power_user.always_force_name2 && !is_pygmalion)) {
             force_name2 = true;
         }
 
@@ -1870,7 +1880,6 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
                 storyString,
                 examplesString,
                 chatString,
-                promptBias,
                 allAnchors,
                 quiet_prompt,
             ].join('').replace(/\r/gm, '');
@@ -1892,15 +1901,14 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
             }
 
             chatString = item + chatString;
-            if (canFitMessages()) { //(The number of tokens in the entire promt) need fix, it must count correctly (added +120, so that the description of the character does not hide)
-                //if (is_pygmalion && i == chat2.length-1) item='<START>\n'+item;
+            if (canFitMessages()) {
                 arrMes[arrMes.length] = item;
-
             } else {
                 break;
-
             }
-            await delay(1); //For disable slow down (encode gpt-2 need fix)
+
+            // Prevent UI thread lock on tokenization
+            await delay(1);
         }
 
         if (main_api !== 'openai') {
@@ -2004,33 +2012,44 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
                     const isBottom = j === mesSend.length - 1;
                     mesSendString += mesSend[j];
 
-                    // Add quiet generation prompt at depth 0
-                    if (isBottom && quiet_prompt && quiet_prompt.length) {
-                        const name = is_pygmalion ? 'You' : name1;
-                        const quietAppend = isInstruct ? formatInstructModeChat(name, quiet_prompt, false, true) : `\n${name}: ${quiet_prompt}`;
-                        mesSendString += quietAppend;
-                    }
-
-                    if (isInstruct && isBottom && tokens_already_generated === 0) {
-                        const name = isImpersonate ? (is_pygmalion ? 'You' : name1) : name2;
-                        mesSendString += formatInstructModePrompt(name, isImpersonate);
-                    }
-
-                    if (!isInstruct && isImpersonate && isBottom && tokens_already_generated === 0) {
-                        const name = is_pygmalion ? 'You' : name1;
-                        if (!mesSendString.endsWith('\n')) {
-                            mesSendString += '\n';
-                        }
-                        mesSendString += name + ':';
-                    }
-
-                    if (force_name2 && isBottom && tokens_already_generated === 0) {
-                        if (!mesSendString.endsWith('\n')) {
-                            mesSendString += '\n';
-                        }
-                        mesSendString += name2 + ':';
+                    if (isBottom) {
+                        mesSendString = modifyLastPromptLine(mesSendString);
                     }
                 }
+            }
+
+            function modifyLastPromptLine(mesSendString) {
+                // Add quiet generation prompt at depth 0
+                if (quiet_prompt && quiet_prompt.length) {
+                    const name = is_pygmalion ? 'You' : name1;
+                    const quietAppend = isInstruct ? formatInstructModeChat(name, quiet_prompt, false, true, false) : `\n${name}: ${quiet_prompt}`;
+                    mesSendString += quietAppend;
+                }
+
+                // Get instruct mode line
+                if (isInstruct && tokens_already_generated === 0) {
+                    const name = isImpersonate ? (is_pygmalion ? 'You' : name1) : name2;
+                    mesSendString += formatInstructModePrompt(name, isImpersonate);
+                }
+
+                // Get non-instruct impersonation line
+                if (!isInstruct && isImpersonate && tokens_already_generated === 0) {
+                    const name = is_pygmalion ? 'You' : name1;
+                    if (!mesSendString.endsWith('\n')) {
+                        mesSendString += '\n';
+                    }
+                    mesSendString += name + ':';
+                }
+
+                // Add character's name
+                if (force_name2 && tokens_already_generated === 0) {
+                    if (!mesSendString.endsWith('\n')) {
+                        mesSendString += '\n';
+                    }
+                    mesSendString += (`${name2}:${promptBias || ''}`);
+                }
+
+                return mesSendString;
             }
 
             function checkPromtSize() {
@@ -2042,7 +2061,6 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
                     mesExmString,
                     mesSendString,
                     generatedPromtCache,
-                    promptBias,
                     allAnchors,
                     quiet_prompt,
                 ].join('').replace(/\r/gm, '');
@@ -2080,8 +2098,7 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
                 afterScenarioAnchor +
                 mesExmString +
                 mesSendString +
-                generatedPromtCache +
-                promptBias;
+                generatedPromtCache;
 
             if (zeroDepthAnchor && zeroDepthAnchor.length) {
                 if (!isMultigenEnabled() || tokens_already_generated == 0) {
@@ -2181,9 +2198,7 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
                     type: 'POST', //
                     url: generate_url, //
                     data: JSON.stringify(generate_data),
-                    beforeSend: function () {
-
-                    },
+                    beforeSend: () => { },
                     cache: false,
                     dataType: "json",
                     contentType: "application/json",
@@ -2352,31 +2367,50 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
         } //rungenerate ends
     } else {    //generate's primary loop ends, after this is error handling for no-connection or safety-id
         if (this_chid === undefined || this_chid === 'invalid-safety-id') {
-            //send ch sel
-            popup_type = 'char_not_selected';
-            callPopup('<h3>Сharacter is not selected</h3>');
+            toastr.warning('Сharacter is not selected');
         }
         is_send_press = false;
     }
     //console.log('generate ending');
 } //generate ends
 
+function getBiasStrings(textareaText) {
+    let promptBias = '';
+    let messageBias = extractMessageBias(textareaText);
+
+    // gets bias of the latest message where it was applied
+    for (let mes of chat.slice().reverse()) {
+        if (mes && mes.extra && (mes.is_user || mes.is_system || mes.extra.type === system_message_types.NARRATOR)) {
+            if (mes.extra.bias && mes.extra.bias.trim().length > 0) {
+                promptBias = mes.extra.bias;
+            }
+            break;
+        }
+    }
+
+    promptBias = messageBias || promptBias || '';
+    return { messageBias, promptBias };
+}
+
 function formatMessageHistoryItem(chatItem, isInstruct) {
     const isNarratorType = chatItem?.extra?.type === system_message_types.NARRATOR;
-    const characterName = selected_group ? chatItem.name : name2;
+    const characterName = (selected_group || chatItem.force_avatar) ? chatItem.name : name2;
     const itemName = chatItem.is_user ? chatItem['name'] : characterName;
-    const shouldPrependName = (chatItem.is_name || selected_group) && !isNarratorType;
+    const shouldPrependName = (chatItem.is_name || chatItem.force_avatar || selected_group) && !isNarratorType;
 
     let textResult = shouldPrependName ? `${itemName}: ${chatItem.mes}\n` : `${chatItem.mes}\n`;
 
     if (isInstruct) {
-        textResult = formatInstructModeChat(itemName, chatItem.mes, chatItem.is_user, isNarratorType);
+        textResult = formatInstructModeChat(itemName, chatItem.mes, chatItem.is_user, isNarratorType, chatItem.force_avatar);
     }
 
-    // replace bias markup
-    textResult = (textResult ?? '').replace(/{{(\*?.*\*?)}}/g, '');
+    textResult = replaceBiasMarkup(textResult);
 
     return textResult;
+}
+
+export function replaceBiasMarkup(str) {
+    return (str ?? '').replace(/{{(\*?.*\*?)}}/g, '');
 }
 
 function sendMessageAsUser(textareaText, messageBias) {
@@ -2392,7 +2426,7 @@ function sendMessageAsUser(textareaText, messageBias) {
         console.log('checking bias');
         chat[chat.length - 1]['extra']['bias'] = messageBias;
     }
-    //console.log('Generate calls addOneMessage');
+
     addOneMessage(chat[chat.length - 1]);
 }
 
@@ -2421,9 +2455,6 @@ function getMaxContextSize() {
 }
 
 function parseTokenCounts(counts, thisPromptBits) {
-    const breakdown_bar = $('#token_breakdown div:first-child');
-    breakdown_bar.empty();
-
     const total = Object.values(counts).filter(x => !Number.isNaN(x)).reduce((acc, val) => acc + val, 0);
 
     thisPromptBits.push({
@@ -2436,22 +2467,6 @@ function parseTokenCounts(counts, thisPromptBits) {
         oaiExamplesTokens: Object.entries(counts)[6][1],
         oaiConversationTokens: Object.entries(counts)[7][1],
         oaiTotalTokens: total,
-    });
-
-    Object.entries(counts).forEach(([type, value]) => {
-        if (value === 0) {
-            return;
-        }
-        const percent_value = (value / total) * 100;
-        const color = uniqolor(type, { saturation: 50, lightness: 75, }).color;
-        const bar = document.createElement('div');
-        bar.style.width = `${percent_value}%`;
-        bar.classList.add('token_breakdown_segment');
-        bar.style.backgroundColor = color + 'AA';
-        bar.style.borderColor = color + 'FF';
-        bar.innerText = value;
-        bar.title = `${type}: ${percent_value.toFixed(2)}%`;
-        breakdown_bar.append(bar);
     });
 }
 
@@ -3399,6 +3414,7 @@ async function read_avatar_load(input) {
         await delay(durationSaveEdit);
         await fetch(getThumbnailUrl('avatar', formData.get('avatar_url')), {
             method: 'GET',
+            cache: 'no-cache',
             headers: {
                 'pragma': 'no-cache',
                 'cache-control': 'no-cache',
@@ -3579,10 +3595,8 @@ function changeMainAPI() {
         // Hide common settings for OpenAI
         if (selectedVal == "openai") {
             $("#common-gen-settings-block").css("display", "none");
-            //$("#token_breakdown").css("display", "flex");
         } else {
             $("#common-gen-settings-block").css("display", "block");
-            //$("#token_breakdown").css("display", "none");
         }
         // Hide amount gen for poe
         if (selectedVal == "poe") {
@@ -3903,22 +3917,30 @@ function messageEditAuto(div) {
     let mesBlock = div.closest(".mes_block");
     var text = mesBlock.find(".edit_textarea").val().trim();
     const bias = extractMessageBias(text);
-    chat[this_edit_mes_id]["mes"] = text;
-    if (chat[this_edit_mes_id]["swipe_id"] !== undefined) {
-        chat[this_edit_mes_id]["swipes"][chat[this_edit_mes_id]["swipe_id"]] = text;
+    const mes = chat[this_edit_mes_id];
+    mes["mes"] = text;
+    if (mes["swipe_id"] !== undefined) {
+        mes["swipes"][mes["swipe_id"]] = text;
     }
 
     // editing old messages
-    if (!chat[this_edit_mes_id]["extra"]) {
-        chat[this_edit_mes_id]["extra"] = {};
+    if (!mes["extra"]) {
+        mes["extra"] = {};
     }
-    chat[this_edit_mes_id]["extra"]["bias"] = bias ?? null;
+
+    if (mes.is_system || mes.is_user || mes.extra.type === system_message_types.NARRATOR) {
+        mes.extra.bias = bias ?? null;
+    }
+    else {
+        mes.extra.bias = null;
+    }
+
     mesBlock.find(".mes_text").val('');
     mesBlock.find(".mes_text").val(messageFormatting(
         text,
         this_edit_mes_chname,
-        chat[this_edit_mes_id].is_system,
-        chat[this_edit_mes_id].is_user,
+        mes.is_system,
+        mes.is_user,
     ));
     saveChatDebounced();
 }
@@ -3927,17 +3949,23 @@ function messageEditDone(div) {
     let mesBlock = div.closest(".mes_block");
     var text = mesBlock.find(".edit_textarea").val().trim();
     const bias = extractMessageBias(text);
-    chat[this_edit_mes_id]["mes"] = text;
-    if (chat[this_edit_mes_id]["swipe_id"] !== undefined) {
-        chat[this_edit_mes_id]["swipes"][chat[this_edit_mes_id]["swipe_id"]] = text;
+    const mes = chat[this_edit_mes_id];
+    mes["mes"] = text;
+    if (mes["swipe_id"] !== undefined) {
+        mes["swipes"][mes["swipe_id"]] = text;
     }
 
     // editing old messages
-    if (!chat[this_edit_mes_id]["extra"]) {
-        chat[this_edit_mes_id]["extra"] = {};
+    if (!mes.extra) {
+        mes.extra = {};
     }
 
-    chat[this_edit_mes_id]["extra"]["bias"] = bias ?? null;
+    if (mes.is_system || mes.is_user || mes.extra.type === system_message_types.NARRATOR) {
+        mes.extra.bias = bias ?? null;
+    }
+    else {
+        mes.extra.bias = null;
+    }
 
     mesBlock.find(".mes_text").empty();
     mesBlock.find(".mes_edit_buttons").css("display", "none");
@@ -3946,13 +3974,13 @@ function messageEditDone(div) {
         messageFormatting(
             text,
             this_edit_mes_chname,
-            chat[this_edit_mes_id].is_system,
-            chat[this_edit_mes_id].is_user,
+            mes.is_system,
+            mes.is_user,
         )
     );
     mesBlock.find(".mes_bias").empty();
     mesBlock.find(".mes_bias").append(messageFormatting(bias));
-    appendImageToMessage(chat[this_edit_mes_id], div.closest(".mes"));
+    appendImageToMessage(mes, div.closest(".mes"));
     addCopyToCodeBlocks(div.closest(".mes"));
     this_edit_mes_id = undefined;
     saveChatConditional();
@@ -3975,7 +4003,7 @@ async function getPastCharacterChats() {
     return data;
 }
 
-async function displayPastChats() {
+export async function displayPastChats() {
     $("#select_chat_div").empty();
 
     const group = selected_group ? groups.find(x => x.id === selected_group) : null;
@@ -4012,7 +4040,7 @@ async function displayPastChats() {
 
             $("#select_chat_div").append(template);
 
-            if (currentChat === fileName.replace(".jsonl", "")) {
+            if (currentChat === fileName.toString().replace(".jsonl", "")) {
                 $("#select_chat_div").find(".select_chat_block:last").attr("highlight", true);
             }
         }
@@ -4057,7 +4085,6 @@ async function getStatusNovel() {
     }
 }
 
-
 function selectRightMenuWithAnimation(selectedMenuId) {
     const displayModes = {
         'rm_info_block': 'flex',
@@ -4078,13 +4105,7 @@ function selectRightMenuWithAnimation(selectedMenuId) {
                 easing: animation_easing,
                 complete: function () { },
             });
-
-
-
-            // $(menu).find('#groupCurrentMemberListToggle').click();
-
         }
-
     })
 }
 
@@ -4098,16 +4119,39 @@ function setRightTabSelectedClass(selectedButtonId) {
     });
 }
 
-function select_rm_info(text, charId = null) {
-    $("#rm_info_text").html("<h3>" + text + "</h3>");
+function select_rm_info(type, charId, previousCharId = null) {
+    if (!type) {
+        toastr.error(`Invalid process (no 'type')`);
+        return;
+    }
+    if (type === 'char_delete') {
+        toastr.warning(`Character Deleted: ${charId}`);
+    }
+    if (type === 'char_create') {
+        toastr.success(`Character Created: ${charId}`);
+    }
+    if (type === 'char_import') {
+        toastr.success(`Character Imported: ${charId}`);
+    }
 
-    selectRightMenuWithAnimation('rm_info_block');
+    selectRightMenuWithAnimation('rm_characters_block');
+
+    if (type === 'char_import' || type === 'char_create') {
+
+        //$(`#rm_characters_block [title="${charId + '.png'}"]`).scrollIntoView({ behavior: "smooth", block: "end" });
+        const element = $(`#rm_characters_block [title="${charId + '.png'}"]`).get(0);
+        element.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+        $(`#rm_characters_block [title="${charId + '.png'}"]`).parent().addClass('flash animated');
+        setTimeout(function () {
+            $(`#rm_characters_block [title="${charId + '.png'}"]`).parent().removeClass('flash animated');
+        }, 5000);
+    }
+
     setRightTabSelectedClass();
 
-    prev_selected_char = charId;
-
-    if (prev_selected_char) {
-        const newId = characters.findIndex((x) => x.name == prev_selected_char);
+    if (previousCharId) {
+        const newId = characters.findIndex((x) => x.avatar == previousCharId);
         if (newId >= 0) {
             this_chid = newId;
         }
@@ -4214,19 +4258,9 @@ function select_rm_create() {
 }
 
 function select_rm_characters() {
-    restoreSelectedCharacter();
-
     menu_type = "characters";
     selectRightMenuWithAnimation('rm_characters_block');
     setRightTabSelectedClass('rm_button_characters');
-}
-
-function restoreSelectedCharacter() {
-    if (prev_selected_char) {
-        let newChId = characters.findIndex((x) => x.name == prev_selected_char);
-        $(`.character_select[chid="${newChId}"]`).trigger("click");
-        prev_selected_char = null;
-    }
 }
 
 function setExtensionPrompt(key, value, position, depth) {
@@ -4431,6 +4465,27 @@ export async function saveChatConditional() {
     }
 }
 
+async function importCharacterChat(formData) {
+    await jQuery.ajax({
+        type: "POST",
+        url: "/importchat",
+        data: formData,
+        beforeSend: function () {
+        },
+        cache: false,
+        contentType: false,
+        processData: false,
+        success: async function (data) {
+            if (data.res) {
+                await displayPastChats();
+            }
+        },
+        error: function () {
+            $("#create_button").removeAttr("disabled");
+        },
+    });
+}
+
 function updateViewMessageIds() {
     $('#chat').find(".mes").each(function (index, element) {
         $(element).attr("mesid", index);
@@ -4490,7 +4545,7 @@ function isHordeGenerationNotAllowed() {
 }
 
 export function cancelTtsPlay() {
-    if (speechSynthesis) {
+    if ('speechSynthesis' in window) {
         speechSynthesis.cancel();
     }
 }
@@ -5166,7 +5221,7 @@ $(document).ready(function () {
                 method: "POST",
                 url: "/deletecharacter",
                 beforeSend: function () {
-                    select_rm_info("Character deleted");
+                    select_rm_info("char_delete", characters[this_chid].name);
                     //$('#create_button').attr('value','Deleting...');
                 },
                 data: msg,
@@ -5338,7 +5393,7 @@ $(document).ready(function () {
                         $("#create_button").attr("value", "✅");
                         let oldSelectedChar = null;
                         if (this_chid != undefined && this_chid != "invalid-safety-id") {
-                            oldSelectedChar = characters[this_chid].name;
+                            oldSelectedChar = characters[this_chid].avatar;
                         }
 
                         console.log(`new avatar id: ${html}`);
@@ -5348,7 +5403,7 @@ $(document).ready(function () {
                         $("#rm_info_block").transition({ opacity: 0, duration: 0 });
                         var $prev_img = $("#avatar_div_div").clone();
                         $("#rm_info_avatar").append($prev_img);
-                        select_rm_info(`Character created<br><h4>${DOMPurify.sanitize(save_name)}</h4>`, oldSelectedChar);
+                        select_rm_info(`char_create`, save_name, oldSelectedChar);
 
                         $("#rm_info_block").transition({ opacity: 1.0, duration: 2000 });
                         crop_data = undefined;
@@ -5938,11 +5993,12 @@ $(document).ready(function () {
     //***Message Editor***
     $(document).on("click", ".mes_edit", function () {
         if (this_chid !== undefined || selected_group) {
-            const message = $(this).closest(".mes");
+            // Previously system messages we're allowed to be edited
+            /*const message = $(this).closest(".mes");
 
             if (message.data("isSystem")) {
                 return;
-            }
+            }*/
 
             let chatScrollPosition = $("#chat").scrollTop();
             if (this_edit_mes_id !== undefined) {
@@ -6172,8 +6228,6 @@ $(document).ready(function () {
             return;
         }
 
-        let names = [];
-
         for (const file of e.target.files) {
             var ext = file.name.match(/\.(\w+)$/);
             if (
@@ -6210,13 +6264,11 @@ $(document).ready(function () {
 
                         let oldSelectedChar = null;
                         if (this_chid != undefined && this_chid != "invalid-safety-id") {
-                            oldSelectedChar = characters[this_chid].name;
+                            oldSelectedChar = characters[this_chid].avatar;
                         }
 
-                        names.push(data.file_name);
-                        let nameString = DOMPurify.sanitize(names.join(', '));
                         await getCharacters();
-                        select_rm_info(`Character imported<br><h4>${nameString}</h4>`, oldSelectedChar);
+                        select_rm_info(`char_import`, data.file_name, oldSelectedChar);
                         $("#rm_info_block").transition({ opacity: 1, duration: 1000 });
                     }
                 },
@@ -6264,12 +6316,13 @@ $(document).ready(function () {
         $("#chat_import_file").click();
     });
 
-    $("#chat_import_file").on("change", function (e) {
+    $("#chat_import_file").on("change", async function (e) {
         var file = e.target.files[0];
-        //console.log(1);
+
         if (!file) {
             return;
         }
+
         var ext = file.name.match(/\.(\w+)$/);
         if (
             !ext ||
@@ -6278,33 +6331,23 @@ $(document).ready(function () {
             return;
         }
 
+        if (selected_group && file.name.endsWith('.json')) {
+            toastr.warning("Only SillyTavern's own format is supported for group chat imports. Sorry!");
+            return;
+        }
+
         var format = ext[1].toLowerCase();
         $("#chat_import_file_type").val(format);
-        //console.log(format);
+
         var formData = new FormData($("#form_import_chat").get(0));
-        //console.log('/importchat entered with: '+formData);
-        jQuery.ajax({
-            type: "POST",
-            url: "/importchat",
-            data: formData,
-            beforeSend: function () {
-                $("#select_chat_div").html("");
-                $("#load_select_chat_div").css("display", "block");
-                //$('#create_button').attr('value','Creating...');
-            },
-            cache: false,
-            contentType: false,
-            processData: false,
-            success: function (data) {
-                //console.log(data);
-                if (data.res) {
-                    displayPastChats();
-                }
-            },
-            error: function (jqXHR, exception) {
-                $("#create_button").removeAttr("disabled");
-            },
-        });
+        $("#select_chat_div").html("");
+        $("#load_select_chat_div").css("display", "block");
+
+        if (selected_group) {
+            await importGroupChat(formData);
+        } else {
+            await importCharacterChat(formData);
+        }
     });
 
     $("#rm_button_group_chats").click(function () {
